@@ -27,7 +27,7 @@ AUTHOR="Sotirios Roussis"
 AUTHOR_NICKNAME="xtonousou"
 GMAIL="${AUTHOR_NICKNAME}@gmail.com"
 GITHUB="https://github.com/${AUTHOR_NICKNAME}"
-VERSION="1.0"
+VERSION="1.1"
 GOOGLE_DNS="8.8.8.8"
 ARCH_MIRRORLIST="https://www.archlinux.org/mirrorlist/"
 COUNTRY_LIST="${ARCH_MIRRORLIST}?country="
@@ -35,7 +35,6 @@ COUNTRY_IPV4_PART="&protocol=http&ip_version=4"
 COUNTRY_IPV6_PART="&protocol=http&ip_version=6"
 IPV4_LIST="${ARCH_MIRRORLIST}?ip_version=4"
 IPV6_LIST="${ARCH_MIRRORLIST}?ip_version=6"
-INTERNET_ACCESS="0"
 MIRRORS="5"
 
 function check_permissions() {
@@ -109,6 +108,7 @@ function clear_line() {
 
 function mr_proper() {
   
+  rm -f "${PAC_LIST_NEW}"
   rm -f "${PAC_LIST_TMP}"
   rm -f /tmp/madubi*
 }
@@ -118,7 +118,7 @@ function exit_script() {
   clear
   echo -n "Cleaning temp files..."
   mr_proper
-  sleep .5
+  sleep .8
   clear_line
   exit 0
 }
@@ -268,7 +268,7 @@ function mirrors_count() {
 
 function rank_mirrors_existing() {
   
-  if $(ping -c 1 ${GOOGLE_DNS} -W 1 > /dev/null 2>&1); then
+  if ping -c 1 "${GOOGLE_DNS}" -W 1 > /dev/null 2>&1; then
     mirrors_count
     cp "${PAC_LIST_}" "${PAC_LIST_TMP}"
     echo -ne "Ranking ${GRN}$PAC_LIST_TMP${STRD}..."
@@ -286,7 +286,7 @@ function rank_mirrors_existing() {
 
 function rank_mirrors() {
 
-  if $(ping -c 1 ${GOOGLE_DNS} -W 1 > /dev/null 2>&1); then
+  if ping -c 1 "${GOOGLE_DNS}" -W 1 > /dev/null 2>&1; then
     mirrors_count
     echo -ne "Ranking ${GRN}$PAC_LIST_NEW${STRD}..."
     sed -i 's/^#Server/Server/' $PAC_LIST_NEW
@@ -303,7 +303,7 @@ function rank_mirrors() {
 
 function get_ipv4_list() {
 
-  if $(ping -c 1 ${GOOGLE_DNS} -W 1 > /dev/null 2>&1); then
+  if ping -c 1 "${GOOGLE_DNS}" -W 1 > /dev/null 2>&1; then
     echo -ne "Downloading new mirrorlist..."
     wget -q -O "${PAC_LIST_NEW}" "${IPV4_LIST}"
     clear_line
@@ -315,7 +315,7 @@ function get_ipv4_list() {
 
 function get_ipv6_list() {
 
-  if $(ping -c 1 ${GOOGLE_DNS} -W 1 > /dev/null 2>&1); then
+  if ping -c 1 "${GOOGLE_DNS}" -W 1 > /dev/null 2>&1; then
     echo -ne "Downloading new mirrorlist..."
     wget -q -O "${PAC_LIST_NEW}" "${IPV6_LIST}"
     clear_line
@@ -344,7 +344,7 @@ function rank_new() {
 
 function get_ipv4_list_and_rank_country() {
   
-  if $(ping -c 1 ${GOOGLE_DNS} -W 1 > /dev/null 2>&1); then
+  if ping -c 1 "${GOOGLE_DNS}" -W 1 > /dev/null 2>&1; then
     local CHOOSEN_COUNTRY
     local HTTP_CODE
     local URL
@@ -365,7 +365,7 @@ function get_ipv4_list_and_rank_country() {
       clear_line
       if ! grep 'errorlist' "${LOCAL_FILE}" > /dev/null; then
         cp "${LOCAL_FILE}" "${PAC_LIST_NEW}"
-        NUMBER_OF_MIRRORS=$(awk '/^#Server/{a++}END{print a}' ${LOCAL_FILE})
+        NUMBER_OF_MIRRORS=$(awk '/^#Server/{a++}END{print a}' "${LOCAL_FILE}")
         echo -e "${ORNG}${NUMBER_OF_MIRRORS}${STRD} mirrors found"
         rank_mirrors
       else
@@ -386,7 +386,7 @@ function get_ipv4_list_and_rank_country() {
 
 function get_ipv6_list_and_rank_country() {
   
-  if $(ping -c 1 ${GOOGLE_DNS} -W 1 > /dev/null 2>&1); then
+  if ping -c 1 "${GOOGLE_DNS}" -W 1 > /dev/null 2>&1; then
     local CHOOSEN_COUNTRY
     local HTTP_CODE
     local URL
@@ -407,7 +407,7 @@ function get_ipv6_list_and_rank_country() {
       clear_line
       if ! grep 'errorlist' "${LOCAL_FILE}" > /dev/null; then
         cp "${LOCAL_FILE}" "${PAC_LIST_NEW}"
-        NUMBER_OF_MIRRORS=$(awk '/^#Server/{a++}END{print a}' ${LOCAL_FILE})
+        NUMBER_OF_MIRRORS=$(awk '/^#Server/{a++}END{print a}' "${LOCAL_FILE}")
         echo -e "${ORNG}${NUMBER_OF_MIRRORS}${STRD} mirrors found"
         rank_mirrors
       else
