@@ -1,8 +1,6 @@
-# madubi
-Menu driven pacman's mirrorlist updater.
+# madubi [![License](https://img.shields.io/badge/License-GPL%20v3%2B-blue.svg?style=flat-square)](https://raw.githubusercontent.com/xtonousou/madubi/master/LICENSE)
+Menu driven pacman's mirrorlist updater. `madubi` means mirror in Hausa (African).<br/>
 <img src="https://raw.githubusercontent.com/xtonousou/madubi/master/imgs/head.jpg" title="Waka Waka"/>
-
-#### madubi means mirror in Hausa (African)<br/>
 
 ## Features
 - **Download** IPv4 or IPv6 mirrorlist.<br/>
@@ -14,8 +12,10 @@ Menu driven pacman's mirrorlist updater.
 
 ## Requirements
 
+Packages and Tools **==>** `util-linux coreutils pacman rankmirrors`.<br/>
+
 Tested on:<br/>
-- Arch **4.7.5-1** - **4.8.4-1**.<br/>
+- Arch **4.7.5-1** - **4.8.8-1**.<br/>
 
 ## Under Development
 - Country based ranking after download.<br/>
