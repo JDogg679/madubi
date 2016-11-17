@@ -1,7 +1,7 @@
 #!/bin/bash
 #### Description      : Menu driven pacman's mirrorlist updater.
 #### Written by       : Sotirios Roussis (aka. xtonousou) - xtonousou@gmail.com on 11-2016
-# madubi means mirror in Hausa (African)
+#### Name:            : madubi that means mirror in Hausa
 
 # DEBUG=1 to skip intro, checking functions and traps
 DEBUG=0
@@ -27,7 +27,7 @@ AUTHOR="Sotirios Roussis"
 AUTHOR_NICKNAME="xtonousou"
 GMAIL="${AUTHOR_NICKNAME}@gmail.com"
 GITHUB="https://github.com/${AUTHOR_NICKNAME}"
-VERSION="1.1"
+VERSION="1.2"
 GOOGLE_DNS="8.8.8.8"
 ARCH_MIRRORLIST="https://www.archlinux.org/mirrorlist/"
 COUNTRY_LIST="${ARCH_MIRRORLIST}?country="
@@ -42,6 +42,14 @@ function check_permissions() {
   if [[ "$(id -u)" -ne "0" ]]; then
      echo -e "${RED}error: ${STRD}you cannot perform this operation unless you are root."
      exit 1
+  fi
+}
+
+function check_internet_connection() {
+  
+  if ! ping -c 1 "${GOOGLE_DNS}" -W 1 > /dev/null 2>&1; then
+    echo -e "${RED}error: ${STRD}No internet connection."
+    exit 1
   fi
 }
 
@@ -72,8 +80,10 @@ function check_rankmirrors() {
 function make_backup() {
   
   if [[ ! -f "${PAC_LIST_OLD}" ]]; then
+    start_spinner "A backup has been created ${GRN}${PAC_LIST_OLD}${STRD}"
+    sleep 2
     cp "${PAC_LIST_}" "${PAC_LIST_OLD}"
-    echo -e "A backup has been created ${GRN}${PAC_LIST_OLD}${STRD}"
+    stop_spinner $?
   fi
 }
 
@@ -106,19 +116,77 @@ function clear_line() {
   printf "\r\033[K"
 }
 
+function spinner() {
+  
+  # $1 start/stop
+  #
+  # on start: $2 display message
+  # on stop : $2 process exit status
+  #           $3 spinner function pid (supplied from stop_spinner)
+  
+  local STEP
+  local SPINNER_PARTS
+  local DELAY
+
+  case $1 in
+    start)
+      # calculate the column where spinner and status msg will be displayed
+      let COLUMN=$(tput cols)-${#2}-8
+      # display message and position the cursor in $COLUMN column
+      echo -ne "${2}"
+      printf "%${COLUMN}s"
+
+      # start spinner
+      STEP=1
+      SPINNER_PARTS='\|/-'
+      DELAY=${SPINNER_DELAY:-0.15}
+
+      while :
+      do
+        printf "\b%s" "${SPINNER_PARTS:STEP++%${#SPINNER_PARTS}:1}"
+        sleep "${DELAY}"
+      done
+    ;;
+    stop)
+      kill "$3" > /dev/null 2>&1
+    ;;
+    *)
+      echo "Invalid argument!"
+      exit 1
+    ;;
+  esac
+}
+
+function start_spinner {
+  
+  # $1 : msg to display
+  spinner "start" "${1}" &
+  # set global spinner pid
+  SPINNER_ID=$!
+  disown
+}
+
+function stop_spinner {
+  
+  # $1 : command exit status
+  spinner "stop" "$1" "${SPINNER_ID}"
+  unset SPINNER_ID
+}
+
 function mr_proper() {
   
   rm -f "${PAC_LIST_NEW}"
   rm -f "${PAC_LIST_TMP}"
-  rm -f /tmp/madubi*
+  rm -rf /tmp/madubi
 }
 
 function exit_script() {
   
   clear
-  echo -n "Cleaning temp files..."
+  start_spinner "Cleaning temp files..."
+  sleep 2
   mr_proper
-  sleep .8
+  stop_spinner $?
   clear_line
   exit 0
 }
@@ -198,10 +266,10 @@ function read_main_options() {
 	case $CHOICE in
 		1) ipvx_menu; read_extra_options ;;
 		2) ipvx_menu; read_extra_options_two ;;
-		3) make_backup; rank_new ;;
+		3) make_backup; check_internet_connection; rank_new ;;
 		4) ipvx_menu; read_extra_options_three ;;
-		5) make_backup; rank_existing ;;
-		6) make_backup; rank_existing_country ;;
+		5) make_backup; check_internet_connection; rank_existing ;;
+		6) make_backup; check_internet_connection; rank_existing_country ;;
 		7) exit_script ;;
 		*) reset_main ;;
 	esac
@@ -215,8 +283,8 @@ function read_extra_options() {
   EXTRA_MENU_CHECK="1"
 	read -p "Enter choice [1-4] and press [ENTER] " -r CHOICE
 	case $CHOICE in
-		1) get_ipv4_list; read_extra_options ;;
-		2) get_ipv6_list; read_extra_options ;;
+		1) check_internet_connection; get_ipv4_list; read_extra_options ;;
+		2) check_internet_connection; get_ipv6_list; read_extra_options ;;
 		3) reset_main ;;
 		4) exit_script ;;
 		*) reset_ipvx ;;
@@ -268,61 +336,57 @@ function mirrors_count() {
 
 function rank_mirrors_existing() {
   
-  if ping -c 1 "${GOOGLE_DNS}" -W 1 > /dev/null 2>&1; then
-    mirrors_count
-    cp "${PAC_LIST_}" "${PAC_LIST_TMP}"
-    echo -ne "Ranking ${GRN}$PAC_LIST_TMP${STRD}..."
-    sed -i 's/^#Server/Server/' $PAC_LIST_TMP
-    rankmirrors -n "$MIRRORS" $PAC_LIST_TMP > $PAC_LIST_
-    clear_line
-    echo -ne "Updating pacman's database..."
-    pacman -Syy 1> /dev/null
-    clear_line
-    echo -e "Done"
-  else
-    echo -e "${RED}No internet connection.${STRD}"
-  fi
+  mirrors_count
+  cp "${PAC_LIST_}" "${PAC_LIST_TMP}"
+  start_spinner "Ranking ${GRN}$PAC_LIST_TMP${STRD}..."
+  sleep 2
+  sed -i 's/^#Server/Server/' $PAC_LIST_TMP
+  rankmirrors -n "$MIRRORS" $PAC_LIST_TMP > $PAC_LIST_
+  stop_spinner $?
+  clear_line
+  start_spinner "Updating pacman's database..."
+  sleep 2
+  pacman -Syy 1> /dev/null
+  stop_spinner $?
+  clear_line
+  echo -e "Done"
 }
 
 function rank_mirrors() {
-
-  if ping -c 1 "${GOOGLE_DNS}" -W 1 > /dev/null 2>&1; then
-    mirrors_count
-    echo -ne "Ranking ${GRN}$PAC_LIST_NEW${STRD}..."
-    sed -i 's/^#Server/Server/' $PAC_LIST_NEW
-    rankmirrors -n "$MIRRORS" $PAC_LIST_NEW > $PAC_LIST_
-    clear_line
-    echo -ne "Updating pacman's database..."
-    pacman -Syy 1> /dev/null
-    clear_line
-    echo -e "Done"
-  else
-    echo -e "${RED}No internet connection.${STRD}"
-  fi
+  
+  mirrors_count
+  start_spinner "Ranking ${GRN}$PAC_LIST_NEW${STRD}..."
+  sleep 2
+  sed -i 's/^#Server/Server/' $PAC_LIST_NEW
+  rankmirrors -n "$MIRRORS" $PAC_LIST_NEW > $PAC_LIST_
+  stop_spinner $?
+  clear_line
+  start_spinner "Updating pacman's database..."
+  sleep 2
+  pacman -Syy 1> /dev/null
+  stop_spinner $?
+  clear_line
+  echo -e "Done"
 }
 
 function get_ipv4_list() {
 
-  if ping -c 1 "${GOOGLE_DNS}" -W 1 > /dev/null 2>&1; then
-    echo -ne "Downloading new mirrorlist..."
-    wget -q -O "${PAC_LIST_NEW}" "${IPV4_LIST}"
-    clear_line
-    echo -e "Saved as ${GRN}$PAC_LIST_NEW${STRD}"
-  else
-    echo -e "${RED}No internet connection.${STRD}"
-  fi
+  start_spinner "Downloading new mirrorlist..."
+  sleep 2
+  wget -q -O "${PAC_LIST_NEW}" "${IPV4_LIST}"
+  stop_spinner $?
+  clear_line
+  echo -e "Saved as ${GRN}$PAC_LIST_NEW${STRD}"
 }
 
 function get_ipv6_list() {
-
-  if ping -c 1 "${GOOGLE_DNS}" -W 1 > /dev/null 2>&1; then
-    echo -ne "Downloading new mirrorlist..."
-    wget -q -O "${PAC_LIST_NEW}" "${IPV6_LIST}"
-    clear_line
-    echo -e "Saved as ${GRN}$PAC_LIST_NEW${STRD}"
-  else
-    echo -e "${RED}No internet connection.${STRD}"
-  fi
+  
+  start_spinner "Downloading new mirrorlist..."
+  sleep 2
+  wget -q -O "${PAC_LIST_NEW}" "${IPV6_LIST}"
+  stop_spinner $?
+  clear_line
+  echo -e "Saved as ${GRN}$PAC_LIST_NEW${STRD}"
 }
 
 function get_ipv4_list_and_rank() {
@@ -344,85 +408,91 @@ function rank_new() {
 
 function get_ipv4_list_and_rank_country() {
   
-  if ping -c 1 "${GOOGLE_DNS}" -W 1 > /dev/null 2>&1; then
-    local CHOOSEN_COUNTRY
-    local HTTP_CODE
-    local URL
-    local LOCAL_FILE
-    local NUMBER_OF_MIRRORS
-    
-    read -p "Enter country's ISO code (e.g. US, GR): " -r CHOOSEN_COUNTRY
-    CHOOSEN_COUNTRY=$(awk '{print toupper($0)}' <<< "${CHOOSEN_COUNTRY}")
-    URL="${COUNTRY_LIST}${CHOOSEN_COUNTRY}${COUNTRY_IPV4_PART}"
-    
-    echo -n "Checking ${ARCH_MIRRORLIST}..."
-    HTTP_CODE=$(wget --spider -t 1 --timeout=600 -S "${URL}" 2>&1 | grep "HTTP/" | awk '{print $2}' | tail -n1)
-    if [[ "${HTTP_CODE}" = "200" ]]; then
-      clear_line
-      LOCAL_FILE="/tmp/madubi-${CHOOSEN_COUNTRY}-ipv4-mirrorlist"
-      echo -n "Checking if ${CHOOSEN_COUNTRY} is available..."
-      wget --quiet "${URL}" -O "${LOCAL_FILE}"
-      clear_line
-      if ! grep 'errorlist' "${LOCAL_FILE}" > /dev/null; then
-        cp "${LOCAL_FILE}" "${PAC_LIST_NEW}"
-        NUMBER_OF_MIRRORS=$(awk '/^#Server/{a++}END{print a}' "${LOCAL_FILE}")
-        echo -e "${ORNG}${NUMBER_OF_MIRRORS}${STRD} mirrors found"
-        rank_mirrors
-      else
-        echo -e "${RED}${CHOOSEN_COUNTRY} is not available${STRD}"
-        wget --quiet "${ARCH_MIRRORLIST}" -O "${LOCAL_FILE}"
-        echo -e "Choose one of the following ISO codes${GRN}"
-        cat < "${LOCAL_FILE}" | grep "<option\ value" | sed 's/.*<option\ value=//;s/<\/option>.*//' | sed 's/^"\(.*\)".*/\1/' | tail -n+2 | sed ':a;N;$!ba;s/\n/, /g'
-        echo -ne "${STRD}"    
-      fi
+  local CHOOSEN_COUNTRY
+  local HTTP_CODE
+  local URL
+  local LOCAL_FILE
+  local NUMBER_OF_MIRRORS
+  
+  read -p "Enter country's ISO code (e.g. US, GR): " -r CHOOSEN_COUNTRY
+  CHOOSEN_COUNTRY=$(awk '{print toupper($0)}' <<< "${CHOOSEN_COUNTRY}")
+  URL="${COUNTRY_LIST}${CHOOSEN_COUNTRY}${COUNTRY_IPV4_PART}"
+  
+  start_spinner "Checking ${ARCH_MIRRORLIST}..."
+  sleep 2
+  HTTP_CODE=$(wget --spider -t 1 --timeout=600 -S "${URL}" 2>&1 | grep "HTTP/" | awk '{print $2}' | tail -n1)
+  if [[ "${HTTP_CODE}" = "200" ]]; then
+    stop_spinner $?
+    clear_line
+    LOCAL_FILE="/tmp/madubi-${CHOOSEN_COUNTRY}-ipv4-mirrorlist"
+    start_spinner "Checking if ${CHOOSEN_COUNTRY} is available..."
+    sleep 2
+    wget --quiet "${URL}" -O "${LOCAL_FILE}"
+    stop_spinner $?
+    clear_line
+    if ! grep 'errorlist' "${LOCAL_FILE}" > /dev/null; then
+      cp "${LOCAL_FILE}" "${PAC_LIST_NEW}"
+      NUMBER_OF_MIRRORS=$(awk '/^#Server/{a++}END{print a}' "${LOCAL_FILE}")
+      echo -e "${ORNG}${NUMBER_OF_MIRRORS}${STRD} mirrors found"
+      rank_mirrors
     else
-      clear_line
-      echo -e "${RED}Server has connection issues, it may be down.${STRD}"
+      start_spinner "${RED}${CHOOSEN_COUNTRY} is not available${STRD}"
+      sleep 2
+      wget --quiet "${ARCH_MIRRORLIST}" -O "${LOCAL_FILE}"
+      stop_spinner $?
+      echo -e "Choose one of the following ISO codes${GRN}"
+      cat < "${LOCAL_FILE}" | grep "<option\ value" | sed 's/.*<option\ value=//;s/<\/option>.*//' | sed 's/^"\(.*\)".*/\1/' | tail -n+2 | sed ':a;N;$!ba;s/\n/, /g'
+      echo -ne "${STRD}"    
     fi
   else
-    echo -e "${RED}No internet connection.${STRD}"
+    stop_spinner $?
+    clear_line
+    echo -e "${RED}Server has connection issues, it may be down.${STRD}"
   fi
 }
 
 function get_ipv6_list_and_rank_country() {
   
-  if ping -c 1 "${GOOGLE_DNS}" -W 1 > /dev/null 2>&1; then
-    local CHOOSEN_COUNTRY
-    local HTTP_CODE
-    local URL
-    local LOCAL_FILE
-    local NUMBER_OF_MIRRORS
+  local CHOOSEN_COUNTRY
+  local HTTP_CODE
+  local URL
+  local LOCAL_FILE
+  local NUMBER_OF_MIRRORS
     
-    read -p "Enter country's ISO code (e.g. US, GR): " -r CHOOSEN_COUNTRY
-    CHOOSEN_COUNTRY=$(awk '{print toupper($0)}' <<< "${CHOOSEN_COUNTRY}")
-    URL="${COUNTRY_LIST}${CHOOSEN_COUNTRY}${COUNTRY_IPV6_PART}"
-    
-    echo -n "Checking ${ARCH_MIRRORLIST}..."
-    HTTP_CODE=$(wget --spider -t 1 --timeout=600 -S "${URL}" 2>&1 | grep "HTTP/" | awk '{print $2}' | tail -n1)
-    if [[ "${HTTP_CODE}" = "200" ]]; then
-      clear_line
-      LOCAL_FILE="/tmp/madubi-${CHOOSEN_COUNTRY}-ipv6-mirrorlist"
-      echo -n "Checking if ${CHOOSEN_COUNTRY} is available..."
-      wget --quiet "${URL}" -O "${LOCAL_FILE}"
-      clear_line
-      if ! grep 'errorlist' "${LOCAL_FILE}" > /dev/null; then
-        cp "${LOCAL_FILE}" "${PAC_LIST_NEW}"
-        NUMBER_OF_MIRRORS=$(awk '/^#Server/{a++}END{print a}' "${LOCAL_FILE}")
-        echo -e "${ORNG}${NUMBER_OF_MIRRORS}${STRD} mirrors found"
-        rank_mirrors
-      else
-        echo -e "${RED}${CHOOSEN_COUNTRY} is not available${STRD}"
-        wget --quiet "${ARCH_MIRRORLIST}" -O "${LOCAL_FILE}"
-        echo -e "Choose one of the following ISO codes${GRN}"
-        cat < "${LOCAL_FILE}" | grep "<option\ value" | sed 's/.*<option\ value=//;s/<\/option>.*//' | sed 's/^"\(.*\)".*/\1/' | tail -n+2 | sed ':a;N;$!ba;s/\n/, /g'
-        echo -ne "${STRD}"    
-      fi
+  read -p "Enter country's ISO code (e.g. US, GR): " -r CHOOSEN_COUNTRY
+  CHOOSEN_COUNTRY=$(awk '{print toupper($0)}' <<< "${CHOOSEN_COUNTRY}")
+  URL="${COUNTRY_LIST}${CHOOSEN_COUNTRY}${COUNTRY_IPV6_PART}"
+  
+  start_spinner "Checking ${ARCH_MIRRORLIST}..."
+  sleep 2
+  HTTP_CODE=$(wget --spider -t 1 --timeout=600 -S "${URL}" 2>&1 | grep "HTTP/" | awk '{print $2}' | tail -n1)
+  if [[ "${HTTP_CODE}" = "200" ]]; then
+    stop_spinner $?
+    clear_line
+    LOCAL_FILE="/tmp/madubi-${CHOOSEN_COUNTRY}-ipv6-mirrorlist"
+    start_spinner "Checking if ${CHOOSEN_COUNTRY} is available..."
+    sleep 2
+    wget --quiet "${URL}" -O "${LOCAL_FILE}"
+    stop_spinner $?
+    clear_line
+    if ! grep 'errorlist' "${LOCAL_FILE}" > /dev/null; then
+      cp "${LOCAL_FILE}" "${PAC_LIST_NEW}"
+      NUMBER_OF_MIRRORS=$(awk '/^#Server/{a++}END{print a}' "${LOCAL_FILE}")
+      echo -e "${ORNG}${NUMBER_OF_MIRRORS}${STRD} mirrors found"
+      rank_mirrors
     else
-      clear_line
-      echo -e "${RED}Server has connection issues, it may be down.${STRD}"
+      start_spinner "${RED}${CHOOSEN_COUNTRY} is not available${STRD}"
+      sleep 2
+      wget --quiet "${ARCH_MIRRORLIST}" -O "${LOCAL_FILE}"
+      stop_spinner $?
+      echo -e "Choose one of the following ISO codes${GRN}"
+      cat < "${LOCAL_FILE}" | grep "<option\ value" | sed 's/.*<option\ value=//;s/<\/option>.*//' | sed 's/^"\(.*\)".*/\1/' | tail -n+2 | sed ':a;N;$!ba;s/\n/, /g'
+      echo -ne "${STRD}"    
     fi
   else
-    echo -e "${RED}No internet connection.${STRD}"
+    stop_spinner $?
+    clear_line
+    echo -e "${RED}Server has connection issues, it may be down.${STRD}"
   fi
 }
 
@@ -446,26 +516,33 @@ function rank_existing_country() {
     read -p "Enter country's ISO code (e.g. US, GR): " -r CHOOSEN_COUNTRY
     CHOOSEN_COUNTRY=$(awk '{print toupper($0)}' <<< "${CHOOSEN_COUNTRY}")
     
-    echo -n "Checking ${ARCH_MIRRORLIST}..."
+    start_spinner "Checking ${ARCH_MIRRORLIST}..."
+    sleep 2
     HTTP_CODE=$(wget --spider -t 1 --timeout=600 -S "${ARCH_MIRRORLIST}" 2>&1 | grep "HTTP/" | awk '{print $2}' | tail -n1)
     if [[ "${HTTP_CODE}" = "200" ]]; then
+      stop_spinner $?
       clear_line
       LOCAL_FILE="/tmp/madubi-${CHOOSEN_COUNTRY}-ranking-existing-mirrolist"
-      echo -n "Checking if ${CHOOSEN_COUNTRY} is available..."
+      start_spinner "Checking if ${CHOOSEN_COUNTRY} is available..."
+      sleep 2
       wget --quiet "${URL}" -O "${LOCAL_FILE}"
+      stop_spinner $?
       clear_line
       if ! grep 'errorlist' "${LOCAL_FILE}" > /dev/null; then
         NUMBER_OF_MIRRORS=$(awk '/^Server/{a++}END{print a}' ${PAC_LIST_TMP})
         echo -e "${ORNG}${NUMBER_OF_MIRRORS}${STRD} mirrors found"
         rank_mirrors_existing
       else
-        echo -e "${RED}${CHOOSEN_COUNTRY} is not available${STRD}"
+        start_spinner "${RED}${CHOOSEN_COUNTRY} is not available${STRD}"
+        sleep 2
         wget --quiet "${ARCH_MIRRORLIST}" -O "${LOCAL_FILE}"
+        stop_spinner $?
         echo -e "Choose one of the following ISO codes${GRN}"
         cat < "${LOCAL_FILE}" | grep "<option\ value" | sed 's/.*<option\ value=//;s/<\/option>.*//' | sed 's/^"\(.*\)".*/\1/' | tail -n+2 | sed ':a;N;$!ba;s/\n/, /g'
         echo -ne "${STRD}"    
       fi
     else
+      stop_spinner $?
       clear_line
       echo -e "${RED}Server has connection issues, it may be down.${STRD}"
     fi
@@ -483,6 +560,7 @@ function init() {
     check_rankmirrors
     check_permissions
     check_bash_version
+    check_internet_connection
     intro
   fi
   
