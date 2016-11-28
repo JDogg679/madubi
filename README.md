@@ -8,23 +8,21 @@ At last but not least, script's name means *mirror* in Hausa.<br/>
 ## Features
 - **Download** IPv4 or IPv6 mirrorlist.<br/>
 - **Download** and **rank** IPv4 or IPv6 mirrorlist.<br/>
-- **Rank** downloaded IPv4 or IPv6 mirrorlist.<br/>
-- **Rank** downloaded IPv4 or IPv6 mirrorlist based on **country**.<br/>
+- **Download** and **rank** IPv4 or IPv6 mirrorlist based on **country**.<br/>
+- **Rank** newly downloaded IPv4 or IPv6 mirrorlist (aka. `.pacnew`).<br/>
+- **Rank** newly downloaded IPv4 or IPv6 mirrorlist based on **country** (aka. `.pacnew`).<br/>
 - **Rank** existing IPv4 or IPv6 mirrorlist.<br/>
 - **Rank** existing IPv4 or IPv6 mirrorlist based on **country**.<br/>
 
-*Note: `madubi` creates a backup mirrolist (if not exists) before making any changes.*<br/>
+**Recommended:** select `Backup` option on *Main Menu* before making any changes.</br>
 
 ## Requirements
 
-Packages: `util-linux coreutils`.<br/>
+Packages: `util-linux coreutils iputils`.<br/>
 Tools: `pacman rankmirrors`.<br/>
 
 Tested on:<br/>
-- Arch **4.7.5-1** - **4.8.8-1**.<br/>
-
-## Under Development
-- Country based ranking right after download.<br/>
+- Arch **4.7.5-1** - **4.8.10-1**.<br/>
 
 ## LICENSE
 This script is under GPLv3 (or later) License.<br/>

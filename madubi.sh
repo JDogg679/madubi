@@ -1,10 +1,10 @@
 #!/bin/bash
-#### Description      : Menu driven pacman's mirrorlist updater.
-#### Written by       : Sotirios Roussis (aka. xtonousou) - xtonousou@gmail.com on 11-2016
-#### Name:            : madubi that means mirror in Hausa
+#### Description......: Menu driven pacman's mirrorlist updater.
+#### Written by.......: Sotirios Roussis (aka. xtonousou) - xtonousou@gmail.com on 11-2016
+#### Name.............: madubi that means mirror in Hausa
 
 # DEBUG=1 to skip intro, checking functions and traps
-DEBUG=0
+DEBUG=1
 
 # colors
 GRN="\033[1;32m"
@@ -12,11 +12,12 @@ RED="\033[1;31m"
 ORNG="\033[1;33m"
 STRD="\e[1;0m"
 
-# pacman's mirrorlist files
+# pacman locations
 PAC_LIST_NEW="/etc/pacman.d/mirrorlist.pacnew"
 PAC_LIST_OLD="/etc/pacman.d/mirrorlist.old"
 PAC_LIST_TMP="/etc/pacman.d/mirrorlist.tmp"
 PAC_LIST_="/etc/pacman.d/mirrorlist"
+PAC_DIR="/etc/pacman.d"
 
 # checkers
 MAIN_MENU_CHECK="1"
@@ -27,88 +28,171 @@ AUTHOR="Sotirios Roussis"
 AUTHOR_NICKNAME="xtonousou"
 GMAIL="${AUTHOR_NICKNAME}@gmail.com"
 GITHUB="https://github.com/${AUTHOR_NICKNAME}"
-VERSION="1.2"
-GOOGLE_DNS="8.8.8.8"
+VERSION="1.3"
+GOOGLE_DNS="8.8.4.4"
 ARCH_MIRRORLIST="https://www.archlinux.org/mirrorlist/"
 COUNTRY_LIST="${ARCH_MIRRORLIST}?country="
 COUNTRY_IPV4_PART="&protocol=http&ip_version=4"
 COUNTRY_IPV6_PART="&protocol=http&ip_version=6"
 IPV4_LIST="${ARCH_MIRRORLIST}?ip_version=4"
 IPV6_LIST="${ARCH_MIRRORLIST}?ip_version=6"
-MIRRORS="5"
+MIRRORS="6"
+RETURNED_VALUE="0"
+
+# workarounds
+IFS=$'\n' # passing values to arrays (internal field separator)
 
 function check_permissions() {
   
   if [[ "$(id -u)" -ne "0" ]]; then
-     echo -e "${RED}error: ${STRD}you cannot perform this operation unless you are root."
+     echo -e "${RED}error${STRD}: you cannot perform this operation unless you are root."
      exit 1
   fi
 }
 
 function check_internet_connection() {
   
-  if ! ping -c 1 "${GOOGLE_DNS}" -W 1 > /dev/null 2>&1; then
-    echo -e "${RED}error: ${STRD}No internet connection."
-    exit 1
-  fi
+  ping -c 1 -W 3 "${GOOGLE_DNS}" > /dev/null 2>&1 && return 1 || \
+  echo -e "${ORNG}warning${STRD}: internet connection unavailable."
 }
 
+# Checks for compatible bash versions. Needs fixing...
 function check_bash_version() {
   
   if bash --version | grep -Eo "4.[0-9].[0-9][0-9]\([0-9]\)" | grep "^[0-3]"; then
-    echo -e "${RED}error: ${STRD}insufficient bash version. You must have bash with version 4 or later."
+    echo -e "${RED}error${STRD}: insufficient bash version. You must have bash with version 4 or later."
     exit 1
   fi
 }
 
 function check_pacman() {
   
-  if ! hash pacman 2> /dev/null; then
-    echo -e "${RED}Error${STRD}. Package manager is not ${ORNG}pacman${STRD}."
-    exit 1
-  fi
+  ! hash pacman 2> /dev/null && \
+  echo -e "${RED}error${STRD}: package manager is not ${ORNG}pacman${STRD}." \
+  exit 1
 }
 
 function check_rankmirrors() {
   
-  if ! hash rankmirrors 2> /dev/null; then
-    echo -e "${RED}Error${STRD}. ${GRN}rankmirrors${STRD} command not found."
-    exit 1
-  fi
+  ! hash rankmirrors 2> /dev/null && \
+  echo -e "${RED}error${STRD}: \"rankmirrors\" command not found." \
+  exit 1
+}
+
+function check_if_in_array () {
+  
+  local ITEM
+  
+  # return 1 if passed value exists in array
+  for ITEM in "${@:2}"; do [[ "$ITEM" == "$1" ]] && return 1; done
+  return 0
 }
 
 function make_backup() {
   
-  if [[ ! -f "${PAC_LIST_OLD}" ]]; then
-    start_spinner "A backup has been created ${GRN}${PAC_LIST_OLD}${STRD}"
+  local CHOICE
+  
+  if ! [[ -f "${PAC_LIST_OLD}" ]]; then
+    start_spinner "Backing up \"${GRN}${PAC_LIST_}${STRD}\""
     sleep 2
     cp "${PAC_LIST_}" "${PAC_LIST_OLD}"
+    clear_line
     stop_spinner $?
+    echo -e "A backup has been created \"${GRN}${PAC_LIST_OLD}${STRD}\""
+  else
+    echo -e "${ORNG}warning${STRD}: a backup already exists"
+    CHOICE=""
+    while [[ ! "${CHOICE}" =~ ^[YyNn]$ ]]; do
+      echo -e "Are you sure you want to replace \"${GRN}${PAC_LIST_OLD}${STRD}\" ?"
+      echo -ne "Enter [y/n] and press [ENTER] "
+      read -r CHOICE
+    done
+    if [[ "${CHOICE}" == "Y" ]]; then
+      CHOICE="y"
+    elif [[ "${CHOICE}" == "N" ]]; then
+      CHOICE="n"
+    fi
+    if [[ "${CHOICE}" == "y" ]]; then
+      start_spinner "Backing up \"${GRN}${PAC_LIST_}${STRD}\""
+      sleep 2
+      cp "${PAC_LIST_}" "${PAC_LIST_OLD}"
+      clear_line
+      stop_spinner $?
+      echo -e "A new backup has been replaced \"${GRN}${PAC_LIST_OLD}${STRD}\""
+    else
+      reset_screen "main"      
+    fi
   fi
 }
 
-function reset_main() {
+function revert_mirrorlist() {
   
-  main_menu
-  read_main_options
+  local CHOICE
+  
+  if [[ -f "${PAC_LIST_OLD}" ]]; then
+    CHOICE=""
+    while [[ ! "${CHOICE}" =~ ^[YyNn]$ ]]; do
+      echo -e "Are you sure you want to revert \"${GRN}${PAC_LIST_}${STRD}\" ?"
+      echo -ne "Enter [y/n] and press [ENTER] "
+      read -r CHOICE
+    done
+    if [[ "${CHOICE}" == "Y" ]]; then
+      CHOICE="y"
+    elif [[ "${CHOICE}" == "N" ]]; then
+      CHOICE="n"
+    fi
+    if [[ "${CHOICE}" == "y" ]]; then
+      start_spinner "Reverting from \"${GRN}${PAC_LIST_OLD}${STRD}\" ..."
+      sleep 2
+      cp "${PAC_LIST_OLD}" "${PAC_LIST_}"
+      clear_line
+      stop_spinner $?
+      echo -e "Mirrorlist is now the way it was on \"${GRN}${PAC_LIST_OLD}${STRD}\""
+    else
+      reset_screen "main"
+    fi
+  else
+    echo -e "${ORNG}warning${STRD}: backup does not exist in \"${GRN}${PAC_DIR}${STRD}\""
+    echo -e "Select \"${GRN}Backup${STRD}\" option from \"${ORNG}Main Menu${STRD}\" to make one"
+    reset_screen "main"      
+  fi 
 }
 
-function reset_ipvx() {
+function reset_screen() {
   
-  ipvx_menu
-  read_extra_options
+  local ENTER
+  
+  read -p "Press [ENTER] to refresh: " -r ENTER
+  if [[ "$1" == "ipvx" ]]; then
+    ipvx_menu
+    read_extra_options
+  elif [[ "$1" == "ipvx_two" ]]; then
+    ipvx_menu
+    read_extra_options_two
+  elif [[ "$1" == "ipvx_three" ]]; then
+    ipvx_menu
+    read_extra_options
+  else
+    main_menu
+    read_main_options
+  fi
 }
 
-function reset_ipvx_two() {
+function return_to() {
   
-  ipvx_menu
-  read_extra_options_two
-}
-
-function reset_ipvx_three() {
-  
-  ipvx_menu
-  read_extra_options_three
+  if [[ "$1" == "ipvx" ]]; then
+    ipvx_menu
+    read_extra_options
+  elif [[ "$1" == "ipvx_two" ]]; then
+    ipvx_menu
+    read_extra_options_two
+  elif [[ "$1" == "ipvx_three" ]]; then
+    ipvx_menu
+    read_extra_options
+  else
+    main_menu
+    read_main_options
+  fi
 }
 
 function clear_line() {
@@ -147,13 +231,8 @@ function spinner() {
         sleep "${DELAY}"
       done
     ;;
-    stop)
-      kill "$3" > /dev/null 2>&1
-    ;;
-    *)
-      echo "Invalid argument!"
-      exit 1
-    ;;
+    stop) kill "$3" > /dev/null 2>&1; ;;
+    *) echo "Invalid argument!"; exit 1; ;;
   esac
 }
 
@@ -175,15 +254,13 @@ function stop_spinner {
 
 function mr_proper() {
   
-  rm -f "${PAC_LIST_NEW}"
-  rm -f "${PAC_LIST_TMP}"
-  rm -rf /tmp/madubi
+  rm -f "${PAC_LIST_TMP}" /tmp/madubi* 
 }
 
 function exit_script() {
   
   clear
-  start_spinner "Cleaning temp files..."
+  start_spinner "Cleaning temp files ..."
   sleep 2
   mr_proper
   stop_spinner $?
@@ -211,7 +288,7 @@ function trap_handler() {
 	if [ ${YN} = "y" ]; then
     exit_script
   else
-		reset_main
+		reset_screen "main"
   fi
 }
 
@@ -224,23 +301,26 @@ function intro() {
   sleep .1 && echo -e "| '_ \` _ \ / _\` |/ _\` | | | | '_ \| |  ${STRD}Mail ...: ${RED}${GMAIL}${ORNG}"
   sleep .1 && echo -e "| | | | | | (_| | (_| | |_| | |_) | |  ${STRD}Github .: ${RED}${GITHUB}${ORNG}"
   sleep .1 && echo -e "|_| |_| |_|\__,_|\__,_|\__,_|_.__/|_|  ${STRD}Version : ${RED}${VERSION}" "${STRD}"
-  sleep 1.2
+  sleep 1.5
 }
 
 function main_menu() {
   
   clear
-  echo    "                 ┌───────────┐"
-  echo -e "┌────────────────┤ ${ORNG}Main Menu${STRD} ├─────────────────┐"
-  echo    "│                └───────────┘                 │"
-  echo -e "│ ${GRN}1${STRD})  Download new mirrorlist                  │"
-  echo -e "│ ${GRN}2${STRD})  Download and rank new mirrorlist         │"
-  echo -e "│ ${GRN}3${STRD})  Rank new mirrorlist                      │"
-  echo -e "│ ${GRN}4${STRD})  Rank new mirrorlist (Country based)      │"
-  echo -e "│ ${GRN}5${STRD})  Rank existing mirrorlist                 │"
-  echo -e "│ ${GRN}6${STRD})  Rank existing mirrorlist (Country based) │"
-  echo -e "│ ${GRN}7${STRD})  Exit                                     │"
-  echo    "└──────────────────────────────────────────────┘"
+  echo    "                     ┌───────────┐"
+  echo -e "┌────────────────────┤ ${ORNG}Main Menu${STRD} ├─────────────────────┐"
+  echo    "│                    └───────────┘                     │"
+  echo -e "│ ${GRN}1${STRD})  Download new mirrorlist                          │"
+  echo -e "│ ${GRN}2${STRD})  Download and rank new mirrorlist                 │"
+  echo -e "│ ${GRN}3${STRD})  Download and rank new mirrorlist (Country based) │"
+  echo -e "│ ${GRN}4${STRD})  Rank new mirrorlist                              │"
+  echo -e "│ ${GRN}5${STRD})  Rank new mirrorlist (Country based)              │"
+  echo -e "│ ${GRN}6${STRD})  Rank existing mirrorlist                         │"
+  echo -e "│ ${GRN}7${STRD})  Rank existing mirrorlist (Country based)         │"
+  echo -e "│ ${GRN}8${STRD})  Backup                                           │"
+  echo -e "│ ${GRN}9${STRD})  Reset                                            │"
+  echo -e "│ ${GRN}10${STRD}) Exit                                             │"
+  echo    "└──────────────────────────────────────────────────────┘"
 }
 
 function ipvx_menu() {
@@ -262,16 +342,34 @@ function read_main_options() {
   
   MAIN_MENU_CHECK="1"
   EXTRA_MENU_CHECK="0"
-	read -p "Enter choice [1-7] and press [ENTER] " -r CHOICE
+	read -p "Enter choice [1-8] and press [ENTER] " -r CHOICE
 	case $CHOICE in
-		1) ipvx_menu; read_extra_options ;;
-		2) ipvx_menu; read_extra_options_two ;;
-		3) make_backup; check_internet_connection; rank_new ;;
-		4) ipvx_menu; read_extra_options_three ;;
-		5) make_backup; check_internet_connection; rank_existing ;;
-		6) make_backup; check_internet_connection; rank_existing_country ;;
-		7) exit_script ;;
-		*) reset_main ;;
+		1)  check_internet_connection
+        if [[ "$?" -eq 1 ]]; then ipvx_menu; read_extra_options;
+        else reset_screen "main"; fi ;;
+		2)  check_internet_connection
+        if [[ "$?" -eq 1 ]]; then ipvx_menu; read_extra_options_two;
+        else reset_screen "main"; fi ;;
+		3)  check_internet_connection
+        if [[ "$?" -eq 1 ]]; then ipvx_menu; read_extra_options_three;
+        else reset_screen "main"; fi ;;
+		4)  check_internet_connection
+        if [[ "$?" -eq 1 ]]; then rank_new; reset_screen "main";
+        else reset_screen "main"; fi ;;
+		5)  check_internet_connection
+        if [[ "$?" -eq 1 ]]; then rank_new_country; reset_screen "main";
+        else reset_screen "main"; fi ;;
+		6)  check_internet_connection
+        if [[ "$?" -eq 1 ]]; then rank_existing; reset_screen "main";
+        else reset_screen "main"; fi ;;
+		#7)  check_internet_connection
+    #    if [[ "$?" -eq 1 ]]; then rank_existing_country; reset_screen "main";
+    #    else reset_screen "main"; fi ;;
+		7)  rank_existing_country; reset_screen "main"; ;;
+    8)  make_backup; reset_screen "main" ;;
+		9)  revert_mirrorlist; reset_screen "main" ;;
+		10) exit_script ;;
+		*)  return_to "main" ;;
 	esac
 }
 
@@ -283,11 +381,15 @@ function read_extra_options() {
   EXTRA_MENU_CHECK="1"
 	read -p "Enter choice [1-4] and press [ENTER] " -r CHOICE
 	case $CHOICE in
-		1) check_internet_connection; get_ipv4_list; read_extra_options ;;
-		2) check_internet_connection; get_ipv6_list; read_extra_options ;;
-		3) reset_main ;;
+		1) check_internet_connection
+       if [[ "$?" -eq 1 ]]; then get_ipv4_list; reset_screen "ipvx";
+       else reset_screen "ipvx"; fi ;;
+		2) check_internet_connection
+       if [[ "$?" -eq 1 ]]; then get_ipv6_list; reset_screen "ipvx";
+       else reset_screen "ipvx"; fi ;;
+		3) return_to "main" ;;
 		4) exit_script ;;
-		*) reset_ipvx ;;
+		*) return_to "ipvx" ;;
 	esac
 }
 
@@ -299,11 +401,15 @@ function read_extra_options_two() {
   EXTRA_MENU_CHECK="1"
 	read -p "Enter choice [1-4] and press [ENTER] " -r CHOICE
 	case $CHOICE in
-		1) make_backup; get_ipv4_list_and_rank; read_extra_options_two ;;
-		2) make_backup; get_ipv6_list_and_rank; read_extra_options_two ;;
-		3) reset_main ;;
+		1) check_internet_connection
+       if [[ "$?" -eq 1 ]]; then get_ipv4_list_and_rank; reset_screen "ipvx_two";
+       else reset_screen "ipvx_two"; fi ;;
+		2) check_internet_connection
+       if [[ "$?" -eq 1 ]]; then get_ipv6_list_and_rank; reset_screen "ipvx_two";
+       else reset_screen "ipvx_two"; fi ;;
+		3) return_to "main" ;;
 		4) exit_script ;;
-		*) reset_ipvx_two ;;
+		*) return_to "ipvx_two";;
 	esac
 }
 
@@ -315,37 +421,115 @@ function read_extra_options_three() {
   EXTRA_MENU_CHECK="1"
 	read -p "Enter choice [1-4] and press [ENTER] " -r CHOICE
 	case $CHOICE in
-		1) get_ipv4_list_and_rank_country; read_extra_options_three ;;
-		2) get_ipv6_list_and_rank_country; read_extra_options_three ;;
-		3) reset_main ;;
+		1) check_internet_connection
+       if [[ "$?" -eq 1 ]]; then get_ipv4_list_and_rank_country; reset_screen "ipvx_three";
+       else reset_screen "ipvx_three"; fi ;;
+		2) check_internet_connection
+       if [[ "$?" -eq 1 ]]; then get_ipv6_list_and_rank_country; reset_screen "ipvx_three";
+       else reset_screen "ipvx_three"; fi ;;
+		3) return_to "main" ;;
 		4) exit_script ;;
-		*) reset_ipvx_three ;;
+		*) return_to "ipvx_three";;
 	esac
 }
 
+# TODO: needs fixing 0 mirrors on input is accepted
+# Reads number of mirrors to keep before ranking, calculates
+# and echoes what user should know about
 function mirrors_count() {
- 
-  read -p "Insert number of mirrors to keep (default=5), and press [ENTER] " -r input_mirrors
-  if [[ $input_mirrors =~ ^-?[0-9]+$ ]]; then
-    MIRRORS=$input_mirrors
-    echo -e "Number of mirrors to keep: ${ORNG}${MIRRORS}${STRD}"
+  
+  local INPUT_MIRRORS
+  
+  INPUT_MIRRORS=""
+  
+  # if not number of servers of mirrolist has been passed
+  if [[ -z "$1" ]]; then
+    # while input is not number, read
+    while ! [[ "${INPUT_MIRRORS}" =~ ^[0-9]+$ ]]; do
+      echo -ne "Enter mirrors to keep (recommended=${ORNG}${MIRRORS}${STRD}), and press [ENTER] "
+      read -r INPUT_MIRRORS
+    done
+    # if default value of mirrors is less than input
+    # replace input with the default value
+    if [[ "${MIRRORS}" -lt "${INPUT_MIRRORS}" ]]; then INPUT_MIRRORS="${MIRRORS}"; fi
+    if [[ "${INPUT_MIRRORS}" -eq 1 ]]; then echo -e "Will keep: ${ORNG}${INPUT_MIRRORS}${STRD} mirror";
+    else echo -e "Will keep: ${ORNG}${INPUT_MIRRORS}${STRD} mirrors"; fi
+  # if number of servers of mirrolist has been passed
   else
-    echo -e "Number of mirrors to keep: ${ORNG}${MIRRORS}${STRD}"
+    # if passed value is less than the default, switch values
+    if [[ "$1" -lt "${MIRRORS}" ]]; then MIRRORS="$1"; fi
+    # while input is not number, read
+    while ! [[ "${INPUT_MIRRORS}" =~ ^[0-9]+$ ]]; do
+      echo -ne "Enter mirrors to keep (recommended=${ORNG}${MIRRORS}${STRD}), and press [ENTER] "
+      read -r INPUT_MIRRORS
+    done
+    # if default value (previously switched with a passed value)
+    # is less than input value, switch values
+    if [[ "${MIRRORS}" -lt "${INPUT_MIRRORS}" ]]; then INPUT_MIRRORS="${MIRRORS}"; fi
+    if [[ "${INPUT_MIRRORS}" -eq 1 ]]; then echo -e "Will keep: ${ORNG}${INPUT_MIRRORS}${STRD} mirror";
+    else echo -e "Will keep: ${ORNG}${INPUT_MIRRORS}${STRD} mirrors"; fi
+  fi
+}
+
+function rank_mirrors_country() {
+
+  local CHOOSEN_COUNTRY
+  local HTTP_CODE
+  local URL
+  local LOCAL_FILE
+  local NUMBER_OF_MIRRORS
+  
+  read -p "Enter country's ISO code (e.g. US, GR): " -r CHOOSEN_COUNTRY
+  CHOOSEN_COUNTRY=$(awk '{print toupper($0)}' <<< "${CHOOSEN_COUNTRY}")
+  start_spinner "Checking ${ARCH_MIRRORLIST} ..."
+  sleep 2
+  HTTP_CODE=$(wget --spider -t 1 --timeout=10 -S "${ARCH_MIRRORLIST}" 2>&1 | grep "HTTP/" | awk '{print $2}' | tail -n1)
+  if [[ "${HTTP_CODE}" = 200 ]]; then
+    stop_spinner $?
+    clear_line
+    start_spinner "Checking if ${CHOOSEN_COUNTRY} is available ..."
+    sleep 2
+    stop_spinner $?
+    clear_line
+    if ! grep 'errorlist' "${LOCAL_FILE}" > /dev/null; then
+      NUMBER_OF_MIRRORS=$(awk '/^Server/{a++}END{print a}' ${PAC_LIST_TMP})
+      echo -e "${ORNG}${NUMBER_OF_MIRRORS}${STRD} mirrors found"
+      rank_mirrors
+    else
+      start_spinner "${RED}${CHOOSEN_COUNTRY} is not available${STRD}"
+      sleep 2
+      wget --quiet "${ARCH_MIRRORLIST}" -O "${LOCAL_FILE}"
+      stop_spinner $?
+      echo -e "Choose one of the following ISO codes${GRN}"
+      cat < "${LOCAL_FILE}" | grep "<option\ value" | sed 's/.*<option\ value=//;s/<\/option>.*//' | sed 's/^"\(.*\)".*/\1/' | tail -n+2 | sed ':a;N;$!ba;s/\n/, /g'
+      echo -ne "${STRD}"    
+    fi
+  else
+    stop_spinner $?
+    clear_line
+    echo -e "${RED}Server has connection issues, it may be down.${STRD}"
   fi
 }
 
 function rank_mirrors_existing() {
   
-  mirrors_count
+  mirrors_count "$1"
   cp "${PAC_LIST_}" "${PAC_LIST_TMP}"
-  start_spinner "Ranking ${GRN}$PAC_LIST_TMP${STRD}..."
+  if [[ -z "$2" ]]; then
+    start_spinner "Ranking ${GRN}$PAC_LIST_TMP${STRD} ..."
+  else
+    start_spinner "Ranking ${GRN}$PAC_LIST_TMP${STRD} based on [${GRN}$2${STRD}] ..."
+  fi
   sleep 2
+  # uncomment servers
   sed -i 's/^#Server/Server/' $PAC_LIST_TMP
+  # rank servers
   rankmirrors -n "$MIRRORS" $PAC_LIST_TMP > $PAC_LIST_
   stop_spinner $?
   clear_line
-  start_spinner "Updating pacman's database..."
+  start_spinner "Updating pacman's database ..."
   sleep 2
+  # update db
   pacman -Syy 1> /dev/null
   stop_spinner $?
   clear_line
@@ -355,13 +539,13 @@ function rank_mirrors_existing() {
 function rank_mirrors() {
   
   mirrors_count
-  start_spinner "Ranking ${GRN}$PAC_LIST_NEW${STRD}..."
+  start_spinner "Ranking ${GRN}$PAC_LIST_NEW${STRD} ..."
   sleep 2
   sed -i 's/^#Server/Server/' $PAC_LIST_NEW
   rankmirrors -n "$MIRRORS" $PAC_LIST_NEW > $PAC_LIST_
   stop_spinner $?
   clear_line
-  start_spinner "Updating pacman's database..."
+  start_spinner "Updating pacman's database ..."
   sleep 2
   pacman -Syy 1> /dev/null
   stop_spinner $?
@@ -371,7 +555,7 @@ function rank_mirrors() {
 
 function get_ipv4_list() {
 
-  start_spinner "Downloading new mirrorlist..."
+  start_spinner "Downloading new mirrorlist ..."
   sleep 2
   wget -q -O "${PAC_LIST_NEW}" "${IPV4_LIST}"
   stop_spinner $?
@@ -381,7 +565,7 @@ function get_ipv4_list() {
 
 function get_ipv6_list() {
   
-  start_spinner "Downloading new mirrorlist..."
+  start_spinner "Downloading new mirrorlist ..."
   sleep 2
   wget -q -O "${PAC_LIST_NEW}" "${IPV6_LIST}"
   stop_spinner $?
@@ -406,6 +590,11 @@ function rank_new() {
   rank_mirrors
 }
 
+function rank_new_country() {
+  
+  rank_mirrors_country
+}
+
 function get_ipv4_list_and_rank_country() {
   
   local CHOOSEN_COUNTRY
@@ -418,14 +607,14 @@ function get_ipv4_list_and_rank_country() {
   CHOOSEN_COUNTRY=$(awk '{print toupper($0)}' <<< "${CHOOSEN_COUNTRY}")
   URL="${COUNTRY_LIST}${CHOOSEN_COUNTRY}${COUNTRY_IPV4_PART}"
   
-  start_spinner "Checking ${ARCH_MIRRORLIST}..."
+  start_spinner "Checking ${ARCH_MIRRORLIST} ..."
   sleep 2
-  HTTP_CODE=$(wget --spider -t 1 --timeout=600 -S "${URL}" 2>&1 | grep "HTTP/" | awk '{print $2}' | tail -n1)
-  if [[ "${HTTP_CODE}" = "200" ]]; then
+  HTTP_CODE=$(wget --spider -t 1 --timeout=10 -S "${URL}" 2>&1 | grep "HTTP/" | awk '{print $2}' | tail -n1)
+  if [[ "${HTTP_CODE}" = 200 ]]; then
     stop_spinner $?
     clear_line
     LOCAL_FILE="/tmp/madubi-${CHOOSEN_COUNTRY}-ipv4-mirrorlist"
-    start_spinner "Checking if ${CHOOSEN_COUNTRY} is available..."
+    start_spinner "Checking if ${CHOOSEN_COUNTRY} is available ..."
     sleep 2
     wget --quiet "${URL}" -O "${LOCAL_FILE}"
     stop_spinner $?
@@ -451,44 +640,60 @@ function get_ipv4_list_and_rank_country() {
   fi
 }
 
+# Download new IPv6 mirrorlist from https://www.archlinux.org/mirrorlist
+# and rank it based on Country or Worldwide.
 function get_ipv6_list_and_rank_country() {
   
   local CHOOSEN_COUNTRY
   local HTTP_CODE
   local URL
-  local LOCAL_FILE
   local NUMBER_OF_MIRRORS
-    
+  
+  # read
   read -p "Enter country's ISO code (e.g. US, GR): " -r CHOOSEN_COUNTRY
+  # capitalize it
   CHOOSEN_COUNTRY=$(awk '{print toupper($0)}' <<< "${CHOOSEN_COUNTRY}")
+  # assemble URL from substituted parts including input
   URL="${COUNTRY_LIST}${CHOOSEN_COUNTRY}${COUNTRY_IPV6_PART}"
   
   start_spinner "Checking ${ARCH_MIRRORLIST}..."
   sleep 2
-  HTTP_CODE=$(wget --spider -t 1 --timeout=600 -S "${URL}" 2>&1 | grep "HTTP/" | awk '{print $2}' | tail -n1)
-  if [[ "${HTTP_CODE}" = "200" ]]; then
+  # get HTTP code from assembled URL
+  HTTP_CODE=$(wget --spider -t 1 --timeout=10 -S "${URL}" 2>&1 | grep "HTTP/" | awk '{print $2}' | tail -n1)
+  # if HTTP CODE is 200
+  if [[ "${HTTP_CODE}" = 200 ]]; then
     stop_spinner $?
     clear_line
-    LOCAL_FILE="/tmp/madubi-${CHOOSEN_COUNTRY}-ipv6-mirrorlist"
-    start_spinner "Checking if ${CHOOSEN_COUNTRY} is available..."
+    start_spinner "Checking if ${CHOOSEN_COUNTRY} is available ..."
     sleep 2
-    wget --quiet "${URL}" -O "${LOCAL_FILE}"
+    # download mirrorlist including input
+    wget --quiet "${URL}" -O "${PAC_LIST_TMP}"
     stop_spinner $?
     clear_line
-    if ! grep 'errorlist' "${LOCAL_FILE}" > /dev/null; then
-      cp "${LOCAL_FILE}" "${PAC_LIST_NEW}"
-      NUMBER_OF_MIRRORS=$(awk '/^#Server/{a++}END{print a}' "${LOCAL_FILE}")
+    # if 'errorlist' does not exist somewhere in the HTML file
+    # it means that input was valid and does exist in there
+    if ! grep 'errorlist' "${PAC_LIST_TMP}" > /dev/null; then
+      # find how many mirrors exists for selected option (commented or not)
+      NUMBER_OF_MIRRORS=$(awk -v COUNT=0 "/^#Server/||/^Server/{COUNT++}END{print COUNT}" "${PAC_LIST_TMP}")
       echo -e "${ORNG}${NUMBER_OF_MIRRORS}${STRD} mirrors found"
+      # copy temp mirrorlist to .pacnew
+      cp "${PAC_LIST_TMP}" "${PAC_LIST_NEW}"
+      # rank mirrorlist
       rank_mirrors
+    # if 'errorlist' does exist in the HTML file
+    # it means that input was invalid and it does not exist in there
     else
       start_spinner "${RED}${CHOOSEN_COUNTRY} is not available${STRD}"
       sleep 2
-      wget --quiet "${ARCH_MIRRORLIST}" -O "${LOCAL_FILE}"
+      # download the HTML file to parse available options
+      wget --quiet "${ARCH_MIRRORLIST}" -O "${PAC_LIST_TMP}"
       stop_spinner $?
       echo -e "Choose one of the following ISO codes${GRN}"
-      cat < "${LOCAL_FILE}" | grep "<option\ value" | sed 's/.*<option\ value=//;s/<\/option>.*//' | sed 's/^"\(.*\)".*/\1/' | tail -n+2 | sed ':a;N;$!ba;s/\n/, /g'
+      # display available options
+      cat < "${PAC_LIST_TMP}" | grep "<option\ value" | sed 's/.*<option\ value=//;s/<\/option>.*//' | sed 's/^"\(.*\)".*/\1/' | tail -n+2 | sed ':a;N;$!ba;s/\n/, /g'
       echo -ne "${STRD}"    
     fi
+  # if HTTP CODE is not 200
   else
     stop_spinner $?
     clear_line
@@ -496,81 +701,94 @@ function get_ipv6_list_and_rank_country() {
   fi
 }
 
+# Ranks existing /etc/pacman.d/mirrorlist.
 function rank_existing() {
   
+  # if /etc/pacman.d/mirrorlist exists then rank it
+  # else print error
   if [[ -f "${PAC_LIST_}" ]]; then
     rank_mirrors_existing
   else
-    echo -e "${RED}Cannot find mirrorlist in /etc/pacman.d${STRD}"
+    echo -e "${RED}Cannot find mirrorlist in ${PAC_DIR}${STRD}"
   fi
 }
 
+# Ranks existing /etc/pacman.d/mirrorlist based on country or worldwide.
 function rank_existing_country() {
   
   local CHOOSEN_COUNTRY
-  local HTTP_CODE
-  local LOCAL_FILE
-  local NUMBER_OF_MIRRORS
   
-  if [[ -f "${PAC_LIST_}" ]]; then    
-    read -p "Enter country's ISO code (e.g. US, GR): " -r CHOOSEN_COUNTRY
-    CHOOSEN_COUNTRY=$(awk '{print toupper($0)}' <<< "${CHOOSEN_COUNTRY}")
+  declare -a AVAILABLE_OPTIONS
     
-    start_spinner "Checking ${ARCH_MIRRORLIST}..."
-    sleep 2
-    HTTP_CODE=$(wget --spider -t 1 --timeout=600 -S "${ARCH_MIRRORLIST}" 2>&1 | grep "HTTP/" | awk '{print $2}' | tail -n1)
-    if [[ "${HTTP_CODE}" = "200" ]]; then
-      stop_spinner $?
-      clear_line
-      LOCAL_FILE="/tmp/madubi-${CHOOSEN_COUNTRY}-ranking-existing-mirrolist"
-      start_spinner "Checking if ${CHOOSEN_COUNTRY} is available..."
-      sleep 2
-      wget --quiet "${URL}" -O "${LOCAL_FILE}"
-      stop_spinner $?
-      clear_line
-      if ! grep 'errorlist' "${LOCAL_FILE}" > /dev/null; then
-        NUMBER_OF_MIRRORS=$(awk '/^Server/{a++}END{print a}' ${PAC_LIST_TMP})
-        echo -e "${ORNG}${NUMBER_OF_MIRRORS}${STRD} mirrors found"
-        rank_mirrors_existing
-      else
-        start_spinner "${RED}${CHOOSEN_COUNTRY} is not available${STRD}"
-        sleep 2
-        wget --quiet "${ARCH_MIRRORLIST}" -O "${LOCAL_FILE}"
-        stop_spinner $?
-        echo -e "Choose one of the following ISO codes${GRN}"
-        cat < "${LOCAL_FILE}" | grep "<option\ value" | sed 's/.*<option\ value=//;s/<\/option>.*//' | sed 's/^"\(.*\)".*/\1/' | tail -n+2 | sed ':a;N;$!ba;s/\n/, /g'
-        echo -ne "${STRD}"    
-      fi
+  if [[ -f "${PAC_LIST_}" ]]; then
+    # make a copy of the current mirrolist
+    cp "${PAC_LIST_}" "${PAC_LIST_TMP}"
+    # if "Arch Linux repository mirrorlist" exists somewhere in mirrorlist, 
+    # it means that mirrorlist is new or it is not yet parsed by madubi
+    grep -i "Arch Linux repository mirrorlist" "${PAC_LIST_TMP}" > /dev/null 2>&1 && \
+    sed -i '1,4d' "${PAC_LIST_TMP}" # if true, remove first four lines
+    # keep only lines starting with double hashtag
+    sed -n -i 's/^## //p' "${PAC_LIST_TMP}"
+    # pass values from file to array
+    AVAILABLE_OPTIONS=($(<"${PAC_LIST_TMP}"))
+    # if options are available, print them out
+    if [[ "${#AVAILABLE_OPTIONS[@]}" -ge 1 ]]; then
+      for i in "${!AVAILABLE_OPTIONS[@]}"; do
+        echo -ne "[${GRN}${AVAILABLE_OPTIONS[i]}${STRD}] "
+      done
+      echo
+      while ! [[ "${RETURNED_VALUE}" -eq 1 ]]; do
+        # read input
+        read -p "Enter country: " -r CHOOSEN_COUNTRY
+        # convert to lowercase
+        CHOOSEN_COUNTRY=$(awk '{print tolower($0)}' <<< "${CHOOSEN_COUNTRY}")
+        # capitalize first letter
+        CHOOSEN_COUNTRY=$(sed -e "s/\b\(.\)/\u\1/g" <<< "${CHOOSEN_COUNTRY}")
+        # validate input check if it exists in array
+        check_if_in_array "${CHOOSEN_COUNTRY}" "${AVAILABLE_OPTIONS[@]}"
+        RETURNED_VALUE="$?"
+      done
+      # extract only the prefered part
+      awk "/${CHOOSEN_COUNTRY}/,/^$/" "${PAC_LIST_}" > "${PAC_LIST_TMP}" 
+      # find how many mirrors exists for selected option (commented or not)
+      NUMBER_OF_MIRRORS=$(awk -v COUNT=0 "/^#Server/||/^Server/{COUNT++}END{print COUNT}" "${PAC_LIST_TMP}")
+      echo -e "${ORNG}${NUMBER_OF_MIRRORS}${STRD} mirrors found for [${GRN}${CHOOSEN_COUNTRY}${STRD}]"
+      # copy modified mirrorlist to the existing one 
+      cp "${PAC_LIST_TMP}" "${PAC_LIST_}"
+      # rank mirrors
+      rank_mirrors_existing "${NUMBER_OF_MIRRORS}" "${CHOOSEN_COUNTRY}"
     else
-      stop_spinner $?
-      clear_line
-      echo -e "${RED}Server has connection issues, it may be down.${STRD}"
+      echo -e "${RED}error${STRD}: \"${GRN}${PAC_LIST_}${STRD}\" does not contain any server."    
     fi
   else
-    echo -e "${RED}Cannot find mirrorlist in /etc/pacman.d${STRD}"
+    echo -e "${RED}Cannot find mirrorlist in ${PAC_DIR}${STRD}"
   fi
 }
 
+# Initializes the script.
 function init() {
   
-  if [[ "${DEBUG}" = "0" ]]; then
+  # if "DEBUG" is on, ignores traps and checking functions
+  if [[ "${DEBUG}" -eq 0 ]]; then
     trap trap_handler INT
     trap trap_handler SIGTSTP
     check_pacman
     check_rankmirrors
     check_permissions
     check_bash_version
-    check_internet_connection
     intro
   fi
   
+  # prints out the main_menu
   main_menu
   
-  while [[ "${MAIN_MENU_CHECK}" -eq "1" ]]; do
+  # this will maintain reading steps in sane (main menu)
+  while [[ "${MAIN_MENU_CHECK}" -eq 1 ]]; do
     read_main_options
   done
 
-  while [[ "${EXTRA_MENU_CHECK}" -eq "1" ]]; do
+  # this will maintain reading steps in sane (extra menus)
+  while [[ "${EXTRA_MENU_CHECK}" -eq 1 ]]; do
     read_extra_options
   done
 }
