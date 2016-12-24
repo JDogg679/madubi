@@ -22,7 +22,11 @@ Packages: `util-linux coreutils iputils`.<br/>
 Tools: `pacman rankmirrors`.<br/>
 
 Tested on:<br/>
-- Arch **4.7.5-1** - **4.8.10-1**.<br/>
+- Arch **4.7.5-1** - **4.8.13-1**.<br/>
+
+## Under Development
+- Rank new mirrorlist based on country.</br>
+- Rank existing mirrorlist based on country.</br>
 
 ## LICENSE
 This script is under GPLv3 (or later) License.<br/>
