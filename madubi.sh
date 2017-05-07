@@ -2,7 +2,8 @@
 #### Description .....: Menu driven pacman's mirrorlist updater.
 #### Written by ......: Sotirios Roussis (aka. xtonousou) - xtonousou@gmail.com on 11-2016
 #### Script's Name ...: madubi
-
+### 1. Insert message for invalid input 
+### 2. use an exit button no matter what the menu
 # DEBUG=1 to skip intro, checking functions and traps
 DEBUG=0
 
@@ -466,8 +467,9 @@ function read_main_options() {
     9)  make_backup; reset_screen "main" ;;
 		10) revert_mirrorlist; reset_screen "main" ;;
 		11) exit_script ;;
-		*)  return_to "main" ;;
-	esac
+    *) echo "Invalid choice" ; sleep 1.25 ;
+    return_to "main" ;;
+    esac
 }
 
 # Read option from user.
